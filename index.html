@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>時鐘記憶</title>
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: #0d0d1a;
+      color: #fff;
+      font-family: 'Segoe UI', Arial, sans-serif;
+      height: 100dvh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      touch-action: manipulation;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    /* ── SCREENS ── */
+    .screen {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 1.6rem;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.3s;
+    }
+    .screen.active { opacity: 1; pointer-events: all; }
+
+    /* ── START ── */
+    #start-screen h1 {
+      font-size: clamp(2.2rem, 8vw, 3.5rem);
+      font-weight: 800;
+      letter-spacing: 3px;
+      background: linear-gradient(135deg, #a78bfa, #60a5fa);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    #start-screen p {
+      font-size: 1rem;
+      color: #9ca3af;
+      text-align: center;
+      line-height: 1.8;
+    }
+    .btn {
+      padding: 14px 48px;
+      font-size: 1.1rem;
+      font-weight: 700;
+      letter-spacing: 1px;
+      border: none;
+      border-radius: 50px;
+      cursor: pointer;
+      background: linear-gradient(135deg, #7c3aed, #2563eb);
+      color: #fff;
+      box-shadow: 0 4px 24px rgba(124,58,237,0.5);
+      transition: transform 0.15s, box-shadow 0.15s;
+    }
+    .btn:hover  { transform: translateY(-3px); box-shadow: 0 8px 32px rgba(124,58,237,0.6); }
+    .btn:active { transform: none; }
+
+    /* ── GAME HUD ── */
+    #hud {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      display: none;
+      justify-content: space-between;
+      align-items: center;
+      padding: 14px 24px;
+      background: rgba(13,13,26,0.85);
+      backdrop-filter: blur(10px);
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+      z-index: 50;
+    }
+    .hud-chip {
+      background: rgba(255,255,255,0.07);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 12px;
+      padding: 6px 18px;
+      font-size: 0.9rem;
+    }
+    .hud-chip b { color: #a78bfa; }
+    #hud-lives { display: flex; gap: 4px; font-size: 1.3rem; }
+
+    /* ── CLOCK ── */
+    #game-screen { gap: 0; }
+
+    .clock-wrap {
+      position: relative;
+      width: min(88vw, 62vh);
+      height: min(88vw, 62vh);
+    }
+
+    .dot {
+      position: absolute;
+      border-radius: 50%;
+      transform: translate(-50%, -50%);
+      cursor: pointer;
+      transition: transform 0.08s, box-shadow 0.08s, background-color 0.08s;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .dot.lit {
+      transform: translate(-50%, -50%) scale(1.2);
+    }
+    .dot.wrong {
+      background-color: #ef4444 !important;
+      box-shadow: 0 0 40px #ef4444 !important;
+    }
+    .dot.correct-flash {
+      transform: translate(-50%, -50%) scale(1.15);
+    }
+
+    /* Clock center status */
+    .clock-center {
+      position: absolute;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      text-align: center;
+      pointer-events: none;
+    }
+    #status-label {
+      font-size: clamp(0.75rem, 2.5vw, 1rem);
+      font-weight: 700;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      color: #6b7280;
+      margin-bottom: 4px;
+    }
+    #round-num {
+      font-size: clamp(2.5rem, 9vw, 4rem);
+      font-weight: 800;
+      line-height: 1;
+      background: linear-gradient(135deg, #a78bfa, #60a5fa);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    #progress-label {
+      font-size: clamp(0.8rem, 2.5vw, 1rem);
+      color: #6b7280;
+      margin-top: 4px;
+    }
+
+    /* ── FLASH OVERLAY ── */
+    #flash {
+      position: fixed; inset: 0;
+      pointer-events: none; z-index: 200; opacity: 0;
+    }
+    #flash.red   { animation: flashAnim 0.45s ease-out; background: rgba(239,68,68,0.12); }
+    #flash.green { animation: flashAnim 0.35s ease-out; background: rgba(74,222,128,0.08); }
+    @keyframes flashAnim { 0%{opacity:1} 100%{opacity:0} }
+
+    /* ── GAME OVER ── */
+    #gameover-screen h2 {
+      font-size: clamp(2rem, 7vw, 3rem);
+      color: #f87171;
+      letter-spacing: 2px;
+    }
+    .big-score {
+      font-size: clamp(3.5rem, 12vw, 6rem);
+      font-weight: 800;
+      background: linear-gradient(135deg, #fbbf24, #f59e0b);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      line-height: 1;
+    }
+    .score-sub { font-size: 1rem; color: #6b7280; }
+  </style>
+</head>
+<body>
+
+<!-- START -->
+<div id="start-screen" class="screen active">
+  <h1>⏰ 時鐘記憶</h1>
+  <p>記住圓圈閃燈的順序<br>再依序點擊出來</p>
+  <button class="btn" id="start-btn">開始遊戲</button>
+</div>
+
+<!-- GAME -->
+<div id="game-screen" class="screen">
+  <div class="clock-wrap" id="clock-wrap">
+    <div class="clock-center">
+      <div id="status-label">第幾關</div>
+      <div id="round-num">1</div>
+      <div id="progress-label"></div>
+    </div>
+  </div>
+</div>
+
+<!-- GAME OVER -->
+<div id="gameover-screen" class="screen">
+  <h2>遊戲結束</h2>
+  <div class="big-score" id="go-score">0</div>
+  <div class="score-sub" id="go-sub">通過 0 關</div>
+  <button class="btn" id="restart-btn" style="margin-top:0.5rem">再玩一次</button>
+</div>
+
+<!-- HUD -->
+<div id="hud">
+  <div class="hud-chip">第 <b id="hud-round">1</b> 關</div>
+  <div id="hud-lives"></div>
+</div>
+
+<div id="flash"></div>
+
+<script>
+'use strict';
+
+// ── 12 dot colors (HSL rainbow, one per clock position) ───────────────────────
+const COLORS = Array.from({length: 12}, () => ({
+  base:   'hsl(250,30%,22%)',
+  active: 'hsl(250,90%,68%)',
+  shadow: 'hsl(250,90%,65%)',
+}));
+
+// ── STATE ─────────────────────────────────────────────────────────────────────
+let state = {};
+let dots  = [];
+
+function resetState() {
+  state = {
+    sequence:    [],
+    playerIdx:   0,
+    lives:       3,
+    phase:       'idle',   // idle | showing | waiting
+  };
+}
+
+// ── HELPERS ───────────────────────────────────────────────────────────────────
+const $    = id => document.getElementById(id);
+const wait = ms => new Promise(r => setTimeout(r, ms));
+
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  $(id).classList.add('active');
+}
+
+function doFlash(color) {
+  const el = $('flash');
+  el.className = '';
+  void el.offsetWidth;
+  el.className = color;
+}
+
+function updateHUD() {
+  $('hud-round').textContent = state.sequence.length;
+  const el = $('hud-lives');
+  el.textContent = '';
+  for (let i = 0; i < 3; i++) {
+    const s = document.createElement('span');
+    s.textContent = i < state.lives ? '❤️' : '🖤';
+    el.appendChild(s);
+  }
+}
+
+// ── BUILD CLOCK ───────────────────────────────────────────────────────────────
+function buildClock() {
+  const wrap    = $('clock-wrap');
+  const size    = wrap.offsetWidth;
+  const cx      = size / 2, cy = size / 2;
+  const R       = size * 0.38;
+  const dotSize = Math.min(52, Math.max(36, size * 0.105));
+
+  dots = [];
+  wrap.querySelectorAll('.dot').forEach(d => d.remove());
+
+  for (let i = 0; i < 12; i++) {
+    const angle = (i / 12) * Math.PI * 2 - Math.PI / 2;
+    const x = cx + R * Math.cos(angle);
+    const y = cy + R * Math.sin(angle);
+
+    const dot = document.createElement('div');
+    dot.className = 'dot';
+    dot.style.cssText = `
+      left:${x}px; top:${y}px;
+      width:${dotSize}px; height:${dotSize}px;
+      background:${COLORS[i].base};
+    `;
+    dot.dataset.i = i;
+
+    dot.addEventListener('pointerdown', e => {
+      e.preventDefault();
+      onDotPress(i);
+    });
+
+    wrap.appendChild(dot);
+    dots.push(dot);
+  }
+}
+
+// ── DOT FLASH ─────────────────────────────────────────────────────────────────
+function litDot(i, ms) {
+  return new Promise(resolve => {
+    const d = dots[i];
+    d.style.backgroundColor = COLORS[i].active;
+    d.style.boxShadow       = `0 0 28px ${COLORS[i].shadow}, 0 0 8px ${COLORS[i].shadow}`;
+    d.classList.add('lit');
+    setTimeout(() => {
+      d.style.backgroundColor = COLORS[i].base;
+      d.style.boxShadow       = 'none';
+      d.classList.remove('lit');
+      setTimeout(resolve, 80);
+    }, ms);
+  });
+}
+
+function correctFlash(i) {
+  const d = dots[i];
+  d.style.backgroundColor = COLORS[i].active;
+  d.style.boxShadow       = `0 0 20px ${COLORS[i].shadow}`;
+  d.classList.add('correct-flash');
+  setTimeout(() => {
+    d.style.backgroundColor = COLORS[i].base;
+    d.style.boxShadow       = 'none';
+    d.classList.remove('correct-flash');
+  }, 200);
+}
+
+// ── SEQUENCE DISPLAY ──────────────────────────────────────────────────────────
+async function showSequence() {
+  state.phase = 'showing';
+  setStatus('記住順序', '');
+  setDotsEnabled(false);
+
+  await wait(500);
+
+  // Speed: starts 700ms, decreases by 20ms per step, min 300ms
+  const ms = Math.max(300, 700 - (state.sequence.length - 1) * 20);
+
+  for (const idx of state.sequence) {
+    await litDot(idx, ms);
+  }
+
+  await wait(200);
+  startPlayerTurn();
+}
+
+function startPlayerTurn() {
+  state.phase     = 'waiting';
+  state.playerIdx = 0;
+  setStatus('換你了！', `0 / ${state.sequence.length}`);
+  setDotsEnabled(true);
+}
+
+// ── PLAYER INPUT ──────────────────────────────────────────────────────────────
+function onDotPress(i) {
+  if (state.phase !== 'waiting') return;
+
+  const expected = state.sequence[state.playerIdx];
+
+  if (i === expected) {
+    correctFlash(i);
+    state.playerIdx++;
+    $('progress-label').textContent = `${state.playerIdx} / ${state.sequence.length}`;
+
+    if (state.playerIdx === state.sequence.length) {
+      // Round complete
+      state.phase = 'idle';
+      setDotsEnabled(false);
+      doFlash('green');
+      setTimeout(nextRound, 700);
+    }
+  } else {
+    // Wrong
+    state.phase = 'idle';
+    setDotsEnabled(false);
+    onWrong(i);
+  }
+}
+
+async function onWrong(wrongIdx) {
+  const d = dots[wrongIdx];
+  d.classList.add('wrong');
+  doFlash('red');
+  setStatus('答錯了', '');
+
+  await wait(700);
+  d.classList.remove('wrong');
+  d.style.backgroundColor = COLORS[wrongIdx].base;
+  d.style.boxShadow = 'none';
+
+  state.lives--;
+  updateHUD();
+
+  if (state.lives <= 0) {
+    await wait(300);
+    endGame();
+  } else {
+    // Retry same sequence
+    await wait(400);
+    showSequence();
+  }
+}
+
+// ── GAME FLOW ─────────────────────────────────────────────────────────────────
+function nextRound() {
+  state.sequence.push(Math.floor(Math.random() * 12));
+  updateHUD();
+  $('round-num').textContent = state.sequence.length;
+  showSequence();
+}
+
+function setStatus(label, progress) {
+  $('status-label').textContent  = label;
+  $('progress-label').textContent = progress;
+}
+
+function setDotsEnabled(on) {
+  dots.forEach(d => d.style.pointerEvents = on ? 'auto' : 'none');
+}
+
+function startGame() {
+  resetState();
+  buildClock();
+  $('hud').style.display = 'flex';
+  updateHUD();
+  showScreen('game-screen');
+  $('round-num').textContent = '1';
+  setStatus('準備好了嗎', '');
+  setTimeout(nextRound, 800);
+}
+
+function endGame() {
+  $('hud').style.display = 'none';
+  const rounds = Math.max(0, state.sequence.length - 1);
+  $('go-score').textContent = rounds;
+  $('go-sub').textContent   = `通過 ${rounds} 關`;
+  showScreen('gameover-screen');
+}
+
+// ── INIT ──────────────────────────────────────────────────────────────────────
+$('start-btn').addEventListener('click', startGame);
+$('restart-btn').addEventListener('click', startGame);
+
+// Rebuild clock on resize
+window.addEventListener('resize', () => {
+  if (state.phase !== 'idle' && dots.length) buildClock();
+});
+</script>
+</body>
+</html>
