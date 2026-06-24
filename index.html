@@ -143,6 +143,12 @@
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
     }
+    #level-rounds {
+      font-size: 1.1rem;
+      color: #a78bfa;
+      letter-spacing: 8px;
+      margin-top: 2px;
+    }
     #progress-label {
       font-size: clamp(0.8rem, 2.5vw, 1rem);
       color: #6b7280;
@@ -190,6 +196,7 @@
     <div class="clock-center">
       <div id="status-label">第幾關</div>
       <div id="round-num">1</div>
+      <div id="level-rounds">○ ○ ○</div>
       <div id="progress-label"></div>
     </div>
   </div>
@@ -206,6 +213,7 @@
 <!-- HUD -->
 <div id="hud">
   <div class="hud-chip">第 <b id="hud-round">1</b> 關</div>
+  <div class="hud-chip" id="hud-round-progress">1 / 3</div>
   <div id="hud-lives"></div>
 </div>
 
@@ -214,27 +222,26 @@
 <script>
 'use strict';
 
-// ── 12 dot colors (HSL rainbow, one per clock position) ───────────────────────
 const COLORS = Array.from({length: 12}, () => ({
   base:   'hsl(250,30%,22%)',
   active: 'hsl(250,90%,68%)',
   shadow: 'hsl(250,90%,65%)',
 }));
 
-// ── STATE ─────────────────────────────────────────────────────────────────────
 let state = {};
 let dots  = [];
 
 function resetState() {
   state = {
-    sequence:    [],
-    playerIdx:   0,
-    lives:       3,
-    phase:       'idle',   // idle | showing | waiting
+    sequence:        [],
+    playerIdx:       0,
+    lives:           3,
+    level:           1,
+    roundsCompleted: 0,   // 0-2；達到 3 才升關
+    phase:           'idle',
   };
 }
 
-// ── HELPERS ───────────────────────────────────────────────────────────────────
 const $    = id => document.getElementById(id);
 const wait = ms => new Promise(r => setTimeout(r, ms));
 
@@ -250,8 +257,14 @@ function doFlash(color) {
   el.className = color;
 }
 
+function roundDots() {
+  return [0,1,2].map(i => i < state.roundsCompleted ? '●' : '○').join(' ');
+}
+
 function updateHUD() {
-  $('hud-round').textContent = state.sequence.length;
+  $('hud-round').textContent = state.level;
+  $('hud-round-progress').textContent = `${state.roundsCompleted + 1} / 3`;
+  $('level-rounds').textContent = roundDots();
   const el = $('hud-lives');
   el.textContent = '';
   for (let i = 0; i < 3; i++) {
@@ -261,7 +274,6 @@ function updateHUD() {
   }
 }
 
-// ── BUILD CLOCK ───────────────────────────────────────────────────────────────
 function buildClock() {
   const wrap    = $('clock-wrap');
   const size    = wrap.offsetWidth;
@@ -296,7 +308,6 @@ function buildClock() {
   }
 }
 
-// ── DOT FLASH ─────────────────────────────────────────────────────────────────
 function litDot(i, ms) {
   return new Promise(resolve => {
     const d = dots[i];
@@ -324,7 +335,16 @@ function correctFlash(i) {
   }, 200);
 }
 
-// ── SEQUENCE DISPLAY ──────────────────────────────────────────────────────────
+function generateSequence(length) {
+  const seq = [];
+  for (let i = 0; i < length; i++) {
+    let next;
+    do { next = Math.floor(Math.random() * 12); } while (seq.length > 0 && next === seq[seq.length - 1]);
+    seq.push(next);
+  }
+  return seq;
+}
+
 async function showSequence() {
   state.phase = 'showing';
   setStatus('記住順序', '');
@@ -332,8 +352,7 @@ async function showSequence() {
 
   await wait(500);
 
-  // Speed: starts 700ms, decreases by 20ms per step, min 300ms
-  const ms = Math.max(300, 700 - (state.sequence.length - 1) * 20);
+  const ms = Math.max(300, 700 - (state.level - 1) * 20);
 
   for (const idx of state.sequence) {
     await litDot(idx, ms);
@@ -350,7 +369,6 @@ function startPlayerTurn() {
   setDotsEnabled(true);
 }
 
-// ── PLAYER INPUT ──────────────────────────────────────────────────────────────
 function onDotPress(i) {
   if (state.phase !== 'waiting') return;
 
@@ -362,14 +380,12 @@ function onDotPress(i) {
     $('progress-label').textContent = `${state.playerIdx} / ${state.sequence.length}`;
 
     if (state.playerIdx === state.sequence.length) {
-      // Round complete
       state.phase = 'idle';
       setDotsEnabled(false);
       doFlash('green');
       setTimeout(nextRound, 700);
     }
   } else {
-    // Wrong
     state.phase = 'idle';
     setDotsEnabled(false);
     onWrong(i);
@@ -394,25 +410,30 @@ async function onWrong(wrongIdx) {
     await wait(300);
     endGame();
   } else {
-    // Retry same sequence
     await wait(400);
     showSequence();
   }
 }
 
-// ── GAME FLOW ─────────────────────────────────────────────────────────────────
-function nextRound() {
-  const last = state.sequence[state.sequence.length - 1];
-  let next;
-  do { next = Math.floor(Math.random() * 12); } while (next === last);
-  state.sequence.push(next);
+function startQuestion() {
+  state.sequence  = generateSequence(state.level);
+  state.playerIdx = 0;
   updateHUD();
-  $('round-num').textContent = state.sequence.length;
+  $('round-num').textContent = state.level;
   showSequence();
 }
 
+function nextRound() {
+  state.roundsCompleted++;
+  if (state.roundsCompleted >= 3) {
+    state.level++;
+    state.roundsCompleted = 0;
+  }
+  startQuestion();
+}
+
 function setStatus(label, progress) {
-  $('status-label').textContent  = label;
+  $('status-label').textContent   = label;
   $('progress-label').textContent = progress;
 }
 
@@ -428,22 +449,20 @@ function startGame() {
   showScreen('game-screen');
   $('round-num').textContent = '1';
   setStatus('準備好了嗎', '');
-  setTimeout(nextRound, 800);
+  setTimeout(startQuestion, 800);
 }
 
 function endGame() {
   $('hud').style.display = 'none';
-  const rounds = Math.max(0, state.sequence.length - 1);
-  $('go-score').textContent = rounds;
-  $('go-sub').textContent   = `通過 ${rounds} 關`;
+  const totalDone = (state.level - 1) * 3 + state.roundsCompleted;
+  $('go-score').textContent = totalDone;
+  $('go-sub').textContent   = `通過 ${totalDone} 題`;
   showScreen('gameover-screen');
 }
 
-// ── INIT ──────────────────────────────────────────────────────────────────────
 $('start-btn').addEventListener('click', startGame);
 $('restart-btn').addEventListener('click', startGame);
 
-// Rebuild clock on resize
 window.addEventListener('resize', () => {
   if (state.phase !== 'idle' && dots.length) buildClock();
 });
