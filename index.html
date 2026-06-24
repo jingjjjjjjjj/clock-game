@@ -164,6 +164,61 @@
     #flash.green { animation: flashAnim 0.35s ease-out; background: rgba(74,222,128,0.08); }
     @keyframes flashAnim { 0%{opacity:1} 100%{opacity:0} }
 
+    /* ── LEVEL SELECT ── */
+    #level-select-screen h2 {
+      font-size: clamp(1.6rem, 6vw, 2.5rem);
+      font-weight: 800;
+      letter-spacing: 2px;
+      background: linear-gradient(135deg, #a78bfa, #60a5fa);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    #level-select-screen p {
+      font-size: 0.9rem;
+      color: #6b7280;
+    }
+    #level-grid {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 10px;
+      width: min(90vw, 360px);
+    }
+    .level-btn {
+      aspect-ratio: 1;
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 14px;
+      background: rgba(255,255,255,0.06);
+      color: #fff;
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 2px;
+      transition: background 0.15s, transform 0.1s, border-color 0.15s;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .level-btn:hover  { background: rgba(124,58,237,0.3); border-color: #7c3aed; transform: translateY(-2px); }
+    .level-btn:active { transform: none; }
+    .level-btn .lv-num {
+      font-size: clamp(1.1rem, 4vw, 1.4rem);
+      font-weight: 800;
+      color: #a78bfa;
+    }
+    .level-btn .lv-sub {
+      font-size: 0.6rem;
+      color: #6b7280;
+    }
+    .back-link {
+      font-size: 0.85rem;
+      color: #6b7280;
+      cursor: pointer;
+      background: none;
+      border: none;
+      letter-spacing: 1px;
+    }
+    .back-link:hover { color: #a78bfa; }
+
     /* ── GAME OVER ── */
     #gameover-screen h2 {
       font-size: clamp(2rem, 7vw, 3rem);
@@ -190,6 +245,14 @@
   <button class="btn" id="start-btn">開始遊戲</button>
 </div>
 
+<!-- LEVEL SELECT -->
+<div id="level-select-screen" class="screen">
+  <h2>選擇關卡</h2>
+  <p>關卡數字 = 需要記憶的燈號數</p>
+  <div id="level-grid"></div>
+  <button class="back-link" id="back-btn">← 返回</button>
+</div>
+
 <!-- GAME -->
 <div id="game-screen" class="screen">
   <div class="clock-wrap" id="clock-wrap">
@@ -206,8 +269,8 @@
 <div id="gameover-screen" class="screen">
   <h2>遊戲結束</h2>
   <div class="big-score" id="go-score">0</div>
-  <div class="score-sub" id="go-sub">通過 0 關</div>
-  <button class="btn" id="restart-btn" style="margin-top:0.5rem">再玩一次</button>
+  <div class="score-sub" id="go-sub">通過 0 題</div>
+  <button class="btn" id="restart-btn" style="margin-top:0.5rem">選關重玩</button>
 </div>
 
 <!-- HUD -->
@@ -441,13 +504,31 @@ function setDotsEnabled(on) {
   dots.forEach(d => d.style.pointerEvents = on ? 'auto' : 'none');
 }
 
-function startGame() {
+function buildLevelGrid() {
+  const grid = $('level-grid');
+  grid.innerHTML = '';
+  for (let lv = 1; lv <= 10; lv++) {
+    const btn = document.createElement('button');
+    btn.className = 'level-btn';
+    btn.innerHTML = `<span class="lv-num">${lv}</span><span class="lv-sub">${lv} 步</span>`;
+    btn.addEventListener('click', () => startGame(lv));
+    grid.appendChild(btn);
+  }
+}
+
+function showLevelSelect() {
+  buildLevelGrid();
+  showScreen('level-select-screen');
+}
+
+function startGame(startLevel = 1) {
   resetState();
+  state.level = startLevel;
   buildClock();
   $('hud').style.display = 'flex';
   updateHUD();
   showScreen('game-screen');
-  $('round-num').textContent = '1';
+  $('round-num').textContent = startLevel;
   setStatus('準備好了嗎', '');
   setTimeout(startQuestion, 800);
 }
@@ -460,8 +541,9 @@ function endGame() {
   showScreen('gameover-screen');
 }
 
-$('start-btn').addEventListener('click', startGame);
-$('restart-btn').addEventListener('click', startGame);
+$('start-btn').addEventListener('click', showLevelSelect);
+$('restart-btn').addEventListener('click', showLevelSelect);
+$('back-btn').addEventListener('click', () => showScreen('start-screen'));
 
 window.addEventListener('resize', () => {
   if (state.phase !== 'idle' && dots.length) buildClock();
